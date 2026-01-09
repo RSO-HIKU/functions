@@ -1,0 +1,39 @@
+name: Deploy Azure Function (Publish Profile)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore functions/functionCsharp/functionCsharp.csproj
+
+      - name: Build
+        run: dotnet build functions/functionCsharp/functionCsharp.csproj -c Release --no-restore
+
+      - name: Publish
+        run: dotnet publish functions/functionCsharp/functionCsharp.csproj -c Release -o publish --no-build
+
+      # Deploy using publish profile (no Entra app registration / no azure/login)
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ secrets.AZURE_FUNCTION_NAME_TEST }}
+          package: publish
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
