@@ -8,6 +8,7 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
+using Azure.Identity;
 
 namespace functionCsharp
 {
@@ -176,17 +177,27 @@ namespace functionCsharp
 
                 _logger.LogInformation($"Image resized successfully: {image.Width}x{image.Height}");
 
-                string connectionString = Environment.GetEnvironmentVariable("AzureWebImageStore") ?? "";
-                if (string.IsNullOrEmpty(connectionString))
+                string accountName = Environment.GetEnvironmentVariable("APP_BLOB_ACCOUNT") ?? "";
+                string containerName = Environment.GetEnvironmentVariable("APP_BLOB_CONTAINER") ?? "images";
+
+                if (string.IsNullOrWhiteSpace(accountName))
                 {
                     var errorResponse = req.CreateResponse(System.Net.HttpStatusCode.InternalServerError);
                     AddCorsHeaders(errorResponse);
-                    await errorResponse.WriteAsJsonAsync(new { error = "AzureWebImageStore not configured" });
+                    await errorResponse.WriteAsJsonAsync(new { error = "APP_BLOB_ACCOUNT not configured" });
                     return errorResponse;
                 }
 
-                var blobServiceClient = new BlobServiceClient(connectionString);
-                var containerClient = blobServiceClient.GetBlobContainerClient("images");
+                var blobServiceUri = new Uri($"https://{accountName}.blob.core.windows.net");
+
+                // Uses the Function App's managed identity in Azure.
+                // Locally it will try Visual Studio / Azure CLI credentials if you are logged in.
+                var credential = new DefaultAzureCredential();
+
+                var blobServiceClient = new BlobServiceClient(blobServiceUri, credential);
+                var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+
+                // Optional: remove this if you want to enforce “container must exist” and avoid creation permissions.
                 await containerClient.CreateIfNotExistsAsync();
 
                 string blobName = $"{DateTime.UtcNow:yyyy-MM-dd}/{Guid.NewGuid()}.jpg";
